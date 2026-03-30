@@ -2,18 +2,6 @@
 
 Connect Kontainer app to your Portainer instance securely. You control your data - everything runs on your infrastructure.
 
-## Quick Start
-
-```bash
-# Download binary (see releases below)
-./portainer-mcp-server \
-  -portainer-url portainer.example.com \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD
-```
-
-That's it. Your server is now ready at `http://localhost:8080`.
-
 ## How It Works
 
 ```
@@ -94,6 +82,19 @@ git clone https://github.com/1buck/portainer-mcp-http-server.git
 cd portainer-mcp-http-server
 go build -o portainer-mcp-server .
 ```
+
+## Usage
+
+After downloading or building, run:
+
+```bash
+./portainer-mcp-server \
+  -portainer-url portainer.example.com \
+  -portainer-token YOUR_API_TOKEN \
+  -password YOUR_PASSWORD
+```
+
+Your server is now ready at `http://localhost:8080`.
 
 ## Configuration
 
