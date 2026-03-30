@@ -1,6 +1,6 @@
 # Portainer MCP HTTP Server
 
-Connect Kontainer app to your Portainer instance securely. You control your data - everything runs on your infrastructure.
+It's just a wrapper of [portainer-mcp](https://github.com/portainer/portainer-mcp) that allows you to access Portainer via an HTTP client.
 
 ## How It Works
 
