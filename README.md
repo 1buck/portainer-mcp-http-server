@@ -1,320 +1,237 @@
 # Portainer MCP HTTP Server
 
-An HTTP wrapper for [portainer-mcp](https://github.com/portainer/portainer-mcp) that exposes MCP via SSE (Server-Sent Events), allowing mobile apps and web clients to connect.
+Connect Kontainer app to your Portainer instance securely. You control your data - everything runs on your infrastructure.
 
-## Architecture
+## Quick Start
 
-```
-┌──────────────────────────────────────────────────────────────────────────────────┐
-│                              Connection Architecture                              │
-│                                                                                   │
-│  ┌─────────────────┐                                                             │
-│  │    Client       │                                                             │
-│  │  (Kontainer)    │                                                             │
-│  │                 │                                                             │
-│  │  ┌───────────┐  │                                                             │
-│  │  │ McpClient │  │                                                             │
-│  │  │           │  │                                                             │
-│  │  │ HTTP/SSE  │──┼─────────────────────────────────────────────────────────────│
-│  │  │ Auth:     │  │     HTTP Basic Auth (password)                              │
-│  │  │ password  │  │     SSE: GET /sse                                           │
-│  │  └───────────┘  │     Msg: POST /mcp/message                                  │
-│  └─────────────────┘                                                             │
-│           │                                                                       │
-│           │ HTTPS                                                                 │
-│           │                                                                       │
-│           ▼                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
-│  │                      portainer-mcp-server (Go)                              │ │
-│  │                                                                             │ │
-│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                        HTTP Server (:8080)                           │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  Endpoints:                                                         │   │ │
-│  │  │  • /sse         GET   SSE stream, creates MCP session               │   │ │
-│  │  │  • /mcp/message POST  Send JSON-RPC to MCP                          │   │ │
-│  │  │  • /connect    GET   Test Portainer connectivity                    │   │ │
-│  │  │  • /health     GET   Health check (no auth)                         │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  Auth: HTTP Basic Auth (password flag)                              │   │ │
-│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                             │ │
-│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                      MCPSession Manager                              │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  • Spawns portainer-mcp process per SSE connection                  │   │ │
-│  │  │  • Communicates via stdin/stdout (JSON-RPC)                         │   │ │
-│  │  │  • Maps SSE events to MCP responses                                 │   │ │
-│  │  │  • Session cleanup on disconnect                                    │   │ │
-│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                             │ │
-│  └─────────────────────────────────────────────────────────────────────────────┘ │
-│           │                                                                       │
-│           │ stdio (stdin/stdout)                                                  │
-│           │ JSON-RPC messages                                                     │
-│           │                                                                       │
-│           ▼                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
-│  │                      portainer-mcp (Node.js)                               │ │
-│  │                                                                             │ │
-│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                     MCP Protocol Server                              │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  • Implements MCP specification (2024-11-05)                        │   │ │
-│  │  │  • Exposes Portainer tools:                                         │   │ │
-│  │  │    - list_containers, get_container, start/stop/remove              │   │ │
-│  │  │    - list_images, pull_image, remove_image                          │   │ │
-│  │  │    - list_volumes, create_volume, remove_volume                     │   │ │
-│  │  │    - list_networks, create_network, remove_network                  │   │ │
-│  │  │    - list_stacks, deploy_stack, remove_stack                        │   │ │
-│  │  │    - Kubernetes: namespaces, pods, deployments, services            │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  Args:                                                               │   │ │
-│  │  │  -server <url>      Portainer URL                                   │   │ │
-│  │  │  -token <token>     Portainer API token                             │   │ │
-│  │  │  -read-only         Disable write operations                        │   │ │
-│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                             │ │
-│  └─────────────────────────────────────────────────────────────────────────────┘ │
-│           │                                                                       │
-│           │ HTTPS REST API                                                        │
-│           │ X-API-Key header                                                      │
-│           │                                                                       │
-│           ▼                                                                       │
-│  ┌─────────────────────────────────────────────────────────────────────────────┐ │
-│  │                         Portainer Instance                                 │ │
-│  │                                                                             │ │
-│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                      Portainer Server                                │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  • Manages Docker/Kubernetes environments                           │   │ │
-│  │  │  • API endpoints:                                                   │   │ │
-│  │  │    - /api/status          System info                               │   │ │
-│  │  │    - /api/endpoints       List environments                         │   │ │
-│  │  │    - /api/docker/...       Docker operations                        │   │ │
-│  │  │    - /api/kubernetes/...   Kubernetes operations                    │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  Auth: API Token (X-API-Key)                                        │   │ │
-│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                             │ │
-│  │  ┌─────────────────────────────────────────────────────────────────────┐   │ │
-│  │  │                     Environments                                     │   │ │
-│  │  │                                                                     │   │ │
-│  │  │  ┌──────────────┐  ┌──────────────┐  ┌────────────────────────────┐ │   │ │
-│  │  │  │  Docker      │  │  Docker      │  │     Kubernetes             │ │   │ │
-│  │  │  │  Standalone  │  │   Swarm      │  │   (K3s, EKS, GKE, AKS...) │ │   │ │
-│  │  │  │              │  │              │  │                            │ │   │ │
-│  │  │  │  Containers  │  │  Services    │  │  Namespaces                │ │   │ │
-│  │  │  │  Images      │  │  Stacks      │  │  Deployments               │ │   │ │
-│  │  │  │  Volumes     │  │  Networks    │  │  Pods                      │ │   │ │
-│  │  │  │  Networks    │  │              │  │  Services                  │ │   │ │
-│  │  │  └──────────────┘  └──────────────┘  └────────────────────────────┘ │   │ │
-│  │  └─────────────────────────────────────────────────────────────────────┘   │ │
-│  │                                                                             │ │
-│  └─────────────────────────────────────────────────────────────────────────────┘ │
-│                                                                                   │
-└──────────────────────────────────────────────────────────────────────────────────┘
+```bash
+# Download binary (see releases below)
+./portainer-mcp-server \
+  -portainer-url portainer.example.com \
+  -portainer-token YOUR_API_TOKEN \
+  -password YOUR_PASSWORD
 ```
 
-### Connection Flow
+That's it. Your server is now ready at `http://localhost:8080`.
+
+## How It Works
 
 ```
-1. Client connects via SSE
-   GET /sse (with Basic Auth)
-   
-2. Server creates MCP session
-   └─> Spawns portainer-mcp process
-   └─> Sends "endpoint" event with message URL
-   
-3. Client initializes MCP protocol
-   POST /mcp/message
-   { "method": "initialize", "params": { ... } }
-   
-4. MCP tools discovery
-   { "method": "tools/list" }
-   └─> Returns available Portainer tools
-   
-5. Tool execution
-   { "method": "tools/call", "params": { "name": "list_containers" } }
-   └─> portainer-mcp calls Portainer API
-   └─> Response streamed via SSE
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                          YOUR INFRASTRUCTURE                                 │
+│                                                                              │
+│   Kontainer App                  portainer-mcp-server         Portainer     │
+│   (your phone)                   (your server)                (your server) │
+│                                                                              │
+│   ┌─────────────┐                ┌────────────────────┐      ┌───────────┐ │
+│   │             │   HTTPS/SSE    │                    │      │           │ │
+│   │  Connect    │───────────────▶│  Receive requests  │─────▶│  Docker   │ │
+│   │             │                │  Forward to MCP    │      │  Swarm    │ │
+│   │  Control    │◀───────────────│  Return results    │◀─────│  K8s      │ │
+│   │             │   Responses    │                    │      │           │ │
+│   └─────────────┘                └────────────────────┘      └───────────┘ │
+│                                                                              │
+│   ● Your data stays on your servers                                          │
+│   ● Your credentials never leave your infrastructure                         │
+│   ● No third-party services involved                                         │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ### Data Flow
 
-| Stage | Protocol | Transport |
-|-------|----------|-----------|
-| Client → MCP Server | MCP over SSE | HTTPS |
-| MCP Server → portainer-mcp | JSON-RPC | stdio |
-| portainer-mcp → Portainer | REST API | HTTPS |
+1. **You run the server** on your machine/VPS next to Portainer
+2. **App connects** to your server with password authentication
+3. **Server forwards** requests to Portainer via MCP
+4. **Results return** directly to your app
 
-## Prerequisites
-
-1. Download `portainer-mcp` binary from [releases](https://github.com/portainer/portainer-mcp/releases)
-2. Place it in your PATH or specify with `-mcp-path`
+Your Portainer API token and password never leave your infrastructure.
 
 ## Installation
 
-### From Source
+### Option 1: Download Binary
+
+Download from [GitHub Releases](https://github.com/1buck/portainer-mcp-http-server/releases):
+
+| Platform | File |
+|----------|------|
+| Linux (amd64) | `portainer-mcp-server-linux-amd64` |
+| Linux (arm64) | `portainer-mcp-server-linux-arm64` |
+| macOS (Intel) | `portainer-mcp-server-darwin-amd64` |
+| macOS (Apple Silicon) | `portainer-mcp-server-darwin-arm64` |
+| Windows | `portainer-mcp-server-windows-amd64.exe` |
+
+### Option 2: Docker
 
 ```bash
-go build -o portainer-mcp-server .
+docker run -d \
+  -p 8080:8080 \
+  -e PORTAINER_URL=https://portainer.example.com \
+  -e PORTAINER_TOKEN=your-token \
+  -e MCP_PASSWORD=your-password \
+  ghcr.io/1buck/portainer-mcp-server:latest
 ```
 
-### Download Binary
-
-Download from releases page (coming soon).
-
-## Usage
-
-### Basic Usage (HTTPS, auto-detected)
-
-```bash
-./portainer-mcp-server \
-  -portainer-url portainer.example.com \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD \
-  -listen :8080 \
-  -base-url https://mcp.example.com
-```
-
-### With IP Address and Port
-
-```bash
-./portainer-mcp-server \
-  -portainer-url 192.168.1.100:9443 \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD
-```
-
-### Using HTTP (for local development)
-
-```bash
-./portainer-mcp-server \
-  -portainer-url localhost:9000 \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD \
-  -use-http
-```
-
-### Full URL (scheme preserved)
-
-```bash
-./portainer-mcp-server \
-  -portainer-url https://portainer.example.com:9443 \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD
-```
-
-### URL Format Support
-
-The `-portainer-url` flag accepts multiple formats:
-
-| Format | Example | Result |
-|--------|---------|--------|
-| Hostname only | `portainer.example.com` | `https://portainer.example.com` |
-| IP address | `192.168.1.100` | `https://192.168.1.100` |
-| IP with port | `192.168.1.100:9443` | `https://192.168.1.100:9443` |
-| Localhost with port | `localhost:9000` | `https://localhost:9000` |
-| Full HTTPS URL | `https://portainer.example.com` | Unchanged |
-| Full HTTP URL | `http://localhost:9000` | Unchanged |
-| With `--use-http` | `portainer.example.com` | `http://portainer.example.com` |
-
-### Flags
-
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-portainer-url` | Portainer server URL (hostname, IP:port, or full URL) | - |
-| `-portainer-token` | Portainer API token (required) | - |
-| `-password` | Password for HTTP Basic Auth (required) | - |
-| `-use-http` | Use HTTP instead of HTTPS | `false` |
-| `-mcp-path` | Path to portainer-mcp binary | `portainer-mcp` |
-| `-listen` | Listen address | `:8080` |
-| `-base-url` | Base URL for SSE endpoint | auto from Host header |
-| `-read-only` | Enable read-only mode | `false` |
-| `-skip-version-check` | Skip Portainer version check | `false` |
-| `-debug` | Enable debug logging | `false` |
-
-## Endpoints
-
-| Endpoint | Method | Auth | Description |
-|----------|--------|------|-------------|
-| `/sse` | GET | Required | SSE endpoint for MCP communication |
-| `/mcp/message` | POST | Required | Send JSON-RPC messages |
-| `/connect` | GET | Required | Test connection to Portainer |
-| `/health` | GET | None | Health check |
-
-### `/connect` - Connection Test
-
-Use this endpoint to validate the connection before saving configuration. Returns JSON:
-
-**Success Response:**
-```json
-{
-  "success": true,
-  "message": "Connection successful",
-  "version": "2.19.4"
-}
-```
-
-**Error Response:**
-```json
-{
-  "success": false,
-  "error": "Invalid Portainer API token"
-}
-```
-
-This endpoint tests connectivity to the Portainer server by calling `/api/status` with the configured API token. Use it in your app's "Add MCP Server" screen to let users verify credentials before saving.
-
-## Connecting from Kontainer App
-
-1. Run this server on your infrastructure
-2. In the app, add a new MCP server with:
-   - **URL**: `https://your-server.com/sse`
-   - **Password**: Password configured for the MCP server (required)
-
-## Docker
-
-```dockerfile
-FROM golang:1.24-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum ./
-RUN go mod download
-COPY . .
-RUN go build -o portainer-mcp-server .
-
-FROM alpine:latest
-RUN apk --no-cache add ca-certificates
-COPY --from=builder /app/portainer-mcp-server /usr/local/bin/
-COPY --from=portainer/portainer-mcp:latest /usr/local/bin/portainer-mcp /usr/local/bin/
-EXPOSE 8080
-CMD ["portainer-mcp-server"]
-```
-
-## Docker Compose
+### Option 3: Docker Compose
 
 ```yaml
 version: '3.8'
 services:
   portainer-mcp-server:
-    build: .
+    image: ghcr.io/1buck/portainer-mcp-server:latest
     ports:
       - "8080:8080"
     environment:
       - PORTAINER_URL=https://portainer.example.com
-      - PORTAINER_TOKEN=your-token-here
-      - MCP_PASSWORD=your-password-here
-    command:
-      - -portainer-url
-      - ${PORTAINER_URL}
-      - -portainer-token
-      - ${PORTAINER_TOKEN}
-      - -password
-      - ${MCP_PASSWORD}
-      - -listen
-      - :8080
+      - PORTAINER_TOKEN=your-token
+      - MCP_PASSWORD=your-password
 ```
+
+### Option 4: Build from Source
+
+```bash
+git clone https://github.com/1buck/portainer-mcp-http-server.git
+cd portainer-mcp-http-server
+go build -o portainer-mcp-server .
+```
+
+## Configuration
+
+### Required Flags
+
+| Flag | Description | Example |
+|------|-------------|---------|
+| `-portainer-url` | Your Portainer URL | `portainer.example.com` or `192.168.1.100:9443` |
+| `-portainer-token` | Portainer API token | Get from Portainer → Settings → API Tokens |
+| `-password` | Password for app authentication | Any password you choose |
+
+### Optional Flags
+
+| Flag | Description | Default |
+|------|-------------|---------|
+| `-listen` | Server listen address | `:8080` |
+| `-base-url` | Public URL for SSE endpoint | Auto-detected |
+| `-read-only` | Disable write operations | `false` |
+| `-use-http` | Use HTTP (dev only) | `false` |
+| `-debug` | Enable debug logs | `false` |
+
+### URL Formats
+
+All these work:
+
+```bash
+# Hostname (HTTPS assumed)
+-portainer-url portainer.example.com
+
+# IP with port
+-portainer-url 192.168.1.100:9443
+
+# Full URL
+-portainer-url https://portainer.example.com:9443
+
+# Local development
+-portainer-url localhost:9000 -use-http
+```
+
+## Getting Your Portainer Token
+
+1. Open Portainer web UI
+2. Go to **Settings → API Tokens**
+3. Click **Add API token**
+4. Give it a name (e.g., "kontainer")
+5. Copy the generated token
+
+## Connecting Kontainer App
+
+1. Ensure server is running
+2. In Kontainer app, add new MCP server:
+   - **URL**: `https://your-server.com/sse` (or `http://localhost:8080/sse` for local)
+   - **Password**: The password you set with `-password` flag
+3. App will discover available tools automatically
+
+## Health Check
+
+```bash
+curl http://localhost:8080/health
+# Returns: OK
+```
+
+## Test Connection
+
+```bash
+curl -u :your-password http://localhost:8080/connect
+# Returns: {"success": true, "version": "2.19.4"}
+```
+
+Use this to verify your Portainer URL and token before saving in the app.
+
+## Security Best Practices
+
+1. **Run behind HTTPS** - Use reverse proxy (nginx, Traefik, Caddy) with SSL
+2. **Strong password** - Use a unique, strong password for `-password`
+3. **Restrict Portainer token** - Create token with minimal required permissions
+4. **Read-only mode** - Use `-read-only` if you only need monitoring
+5. **Firewall** - Restrict access to known IPs if possible
+
+### Example with Caddy (automatic HTTPS)
+
+```caddyfile
+mcp.example.com {
+    reverse_proxy localhost:8080
+}
+```
+
+### Example with nginx
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name mcp.example.com;
+
+    ssl_certificate /path/to/cert.pem;
+    ssl_certificate_key /path/to/key.pem;
+
+    location / {
+        proxy_pass http://localhost:8080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+    }
+}
+```
+
+## Available Operations
+
+Once connected, Kontainer can:
+
+- **Containers**: list, get details, start, stop, restart, remove
+- **Images**: list, pull, remove
+- **Volumes**: list, create, remove
+- **Networks**: list, create, remove
+- **Stacks**: list, deploy, remove (Docker Swarm)
+- **Kubernetes**: namespaces, pods, deployments, services, logs
+
+## Troubleshooting
+
+### "Unauthorized" error
+
+- Check password matches exactly what you set
+- Ensure app is using correct URL
+
+### "Connection failed" error
+
+- Verify Portainer URL is reachable from server
+- Check API token is valid (test with `/connect` endpoint)
+- Ensure Portainer is running
+
+### "Streaming unsupported" error
+
+- Server doesn't support SSE. Use a proper HTTP server.
+
+## Requirements
+
+- Portainer CE or BE 2.0+
+- `portainer-mcp` binary (bundled in Docker image, or download separately)
 
 ## License
 
