@@ -37,42 +37,30 @@ Your Portainer API token and password never leave your infrastructure.
 
 ## Installation
 
-### Option 1: Download Binary (Recommended)
-
-**🎉 Self-contained binaries - no additional downloads required!**
-
-Download from [GitHub Releases](https://github.com/1buck/portainer-mcp-http-server/releases):
-
-| Platform | File |
-|----------|------|
-| Linux (amd64) | `portainer-mcp-server-linux-amd64` |
-| Linux (arm64) | `portainer-mcp-server-linux-arm64` |
-| macOS (Apple Silicon) | `portainer-mcp-server-darwin-arm64` |
-| Windows | `portainer-mcp-server-windows-amd64.exe` |
-| macOS (Intel) | `portainer-mcp-server-darwin-amd64` |
-
-> **Note for Windows/macOS Intel users:** `portainer-mcp` binary must be installed separately as it's not available from the portainer-mcp project for these platforms.
-
-**Quick Download:**
+### Option 1: Auto-Install Script
 
 ```bash
-# Linux AMD64
-curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-linux-amd64
+# Install latest version (v0.7.0)
+curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash
 
-# Linux ARM64
-curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-linux-arm64
+# Install specific version
+curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --version v0.7.0
 
-# macOS Apple Silicon
-curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-darwin-arm64
-
-# Windows
-curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-windows-amd64.exe
-
-# Make executable (Linux/macOS)
-chmod +x portainer-mcp-server-*
+# Show all options
+curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --help
 ```
 
-### Option 2: Docker
+**Script Features:**
+- ✅ Auto-detects OS and architecture
+- ✅ Downloads correct binary for your platform
+- ✅ Installs to `/usr/local/bin` (or custom location)
+- ✅ Creates `portainer-mcp-server` symlink
+- ✅ Supports reinstallation with `--force`
+- ✅ Verifies download integrity
+
+---
+
+### Option 2: Docker (Recommend)
 
 ```bash
 docker run -d \
@@ -83,8 +71,9 @@ docker run -d \
   -e MCP_BASE_URL=192.168.1.50:8080 \
   ghcr.io/1buck/portainer-mcp-server:latest
 ```
+---
 
-### Option 3: Docker Compose
+### Option 3: Docker Compose (Recommend)
 
 ```yaml
 version: '3.8'
@@ -99,6 +88,7 @@ services:
       - MCP_PASSWORD=your-password
       - MCP_BASE_URL=192.168.1.50:8080
 ```
+---
 
 ### Option 4: Build from Source
 
