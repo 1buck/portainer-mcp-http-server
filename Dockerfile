@@ -16,11 +16,11 @@ FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates
 
-# Download portainer-mcp
-RUN wget -q https://github.com/portainer/portainer-mcp/releases/download/v0.7.0/portainer-mcp-v0.7.0-linux-amd64.tar.gz \
-    && tar -xzf portainer-mcp-v0.7.0-linux-amd64.tar.gz \
+ARG TARGETARCH
+RUN wget -q https://github.com/portainer/portainer-mcp/releases/download/v0.7.0/portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz \
+    && tar -xzf portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz \
     && mv portainer-mcp /usr/local/bin/ \
-    && rm portainer-mcp-v0.7.0-linux-amd64.tar.gz
+    && rm portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz
 
 COPY --from=builder /app/portainer-mcp-server /usr/local/bin/
 
