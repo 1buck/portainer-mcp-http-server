@@ -1,6 +1,7 @@
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"flag"
 	"fmt"
@@ -10,6 +11,8 @@ import (
 	"os"
 	"os/exec"
 	"os/signal"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"syscall"
@@ -19,6 +22,9 @@ import (
 	"github.com/mdp/qrterminal/v3"
 	"github.com/rs/zerolog"
 )
+
+//go:embed bundled/*
+var bundledBinaries embed.FS
 
 var (
 	portainerURL     = flag.String("portainer-url", getEnv("PORTAINER_URL", ""), "Portainer server URL (hostname, IP:port, or full URL)")
@@ -32,6 +38,76 @@ var (
 	password         = flag.String("password", getEnv("MCP_PASSWORD", ""), "Password for HTTP Basic Auth (required)")
 	useHTTP          = flag.Bool("use-http", getEnvBool("MCP_USE_HTTP", false), "Use HTTP instead of HTTPS for Portainer connection")
 )
+
+// getBundledBinaryPath returns the bundled portainer-mcp binary for the current platform.
+func getBundledBinaryPath() (string, error) {
+	goos := runtime.GOOS
+	arch := runtime.GOARCH
+
+	var binaryName string
+	if goos == "windows" {
+		binaryName = "portainer-mcp-windows-amd64.exe"
+	} else if goos == "darwin" {
+		if arch == "arm64" {
+			binaryName = "portainer-mcp-darwin-arm64"
+		} else {
+			binaryName = "portainer-mcp-darwin-amd64"
+		}
+	} else if goos == "linux" {
+		if arch == "arm64" {
+			binaryName = "portainer-mcp-linux-arm64"
+		} else {
+			binaryName = "portainer-mcp-linux-amd64"
+		}
+	} else {
+		return "", fmt.Errorf("unsupported OS: %s", goos)
+	}
+
+	binaryPath := filepath.Join("bundled", binaryName)
+	if _, err := bundledBinaries.Open(binaryPath); err != nil {
+		return "", fmt.Errorf("bundled binary %s not found: %w", binaryName, err)
+	}
+
+	tmpDir, err := os.MkdirTemp("", "portainer-mcp-*")
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp dir: %w", err)
+	}
+
+	tmpPath := filepath.Join(tmpDir, binaryName)
+	data, err := bundledBinaries.ReadFile(binaryPath)
+	if err != nil {
+		return "", fmt.Errorf("failed to read bundled binary: %w", err)
+	}
+
+	if err := os.WriteFile(tmpPath, data, 0755); err != nil {
+		return "", fmt.Errorf("failed to write binary: %w", err)
+	}
+
+	return tmpPath, nil
+}
+
+// findPortainerMCP returns the path to portainer-mcp binary:
+func findPortainerMCP(explicitPath string) string {
+	if explicitPath != "" && explicitPath != "portainer-mcp" {
+		return explicitPath
+	}
+
+	if bundledPath, err := getBundledBinaryPath(); err == nil {
+		log.Printf("Using bundled portainer-mcp binary: %s", bundledPath)
+		return bundledPath
+	}
+
+	log.Printf("No bundled binary for this platform, searching PATH for 'portainer-mcp'")
+
+	path, err := exec.LookPath("portainer-mcp")
+	if err != nil {
+		log.Printf("Warning: portainer-mcp not found in PATH")
+		log.Printf("Download from https://github.com/portainer/portainer-mcp/releases")
+		return "portainer-mcp"
+	}
+
+	return path
+}
 
 // getEnv reads an environment variable and returns the value or a default
 func getEnv(key, defaultValue string) string {
@@ -137,6 +213,9 @@ func main() {
 	if *password == "" {
 		logger.Fatal().Msg("--password is required")
 	}
+
+	// Resolve portainer-mcp binary path (bundled, explicit, or PATH)
+	*portainerMCPPath = findPortainerMCP(*portainerMCPPath)
 
 	authMiddleware := func(next http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {

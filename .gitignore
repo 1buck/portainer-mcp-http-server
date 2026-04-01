@@ -1,3 +1,4 @@
 dist/
+bundled/
 .DS_Store
 portainer-mcp-server

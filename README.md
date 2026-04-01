@@ -37,7 +37,9 @@ Your Portainer API token and password never leave your infrastructure.
 
 ## Installation
 
-### Option 1: Download Binary
+### Option 1: Download Binary (Recommended)
+
+**🎉 Self-contained binaries - no additional downloads required!**
 
 Download from [GitHub Releases](https://github.com/1buck/portainer-mcp-http-server/releases):
 
@@ -45,9 +47,30 @@ Download from [GitHub Releases](https://github.com/1buck/portainer-mcp-http-serv
 |----------|------|
 | Linux (amd64) | `portainer-mcp-server-linux-amd64` |
 | Linux (arm64) | `portainer-mcp-server-linux-arm64` |
-| macOS (Intel) | `portainer-mcp-server-darwin-amd64` |
 | macOS (Apple Silicon) | `portainer-mcp-server-darwin-arm64` |
 | Windows | `portainer-mcp-server-windows-amd64.exe` |
+| macOS (Intel) | `portainer-mcp-server-darwin-amd64` |
+
+> **Note for Windows/macOS Intel users:** `portainer-mcp` binary must be installed separately as it's not available from the portainer-mcp project for these platforms.
+
+**Quick Download:**
+
+```bash
+# Linux AMD64
+curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-linux-amd64
+
+# Linux ARM64
+curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-linux-arm64
+
+# macOS Apple Silicon
+curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-darwin-arm64
+
+# Windows
+curl -LO https://github.com/1buck/portainer-mcp-http-server/releases/download/v0.7.0/portainer-mcp-server-windows-amd64.exe
+
+# Make executable (Linux/macOS)
+chmod +x portainer-mcp-server-*
+```
 
 ### Option 2: Docker
 
@@ -89,7 +112,7 @@ go build -o portainer-mcp-server .
 
 ### Binary
 
-After downloading or building, run:
+The binary is **self-contained** - it automatically extracts and uses the bundled `portainer-mcp` binary on supported platforms.
 
 ```bash
 # Basic usage
@@ -99,6 +122,11 @@ After downloading or building, run:
   -password YOUR_PASSWORD \
   -base-url 192.168.1.50:8080
 ```
+
+**Binary Resolution:** The server will:
+1. Use the bundled `portainer-mcp` binary (automatically extracted to temp directory)
+2. Fall back to searching PATH for `portainer-mcp` if bundled binary is not available
+3. Use explicit path if `-mcp-path` flag is provided
 ### Docker / Docker Compose
 
 Environment variables map to flags:
