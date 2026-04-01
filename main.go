@@ -16,21 +16,38 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/mdp/qrterminal/v3"
 	"github.com/rs/zerolog"
 )
 
 var (
-	portainerURL     = flag.String("portainer-url", "", "Portainer server URL (hostname, IP:port, or full URL)")
-	portainerToken   = flag.String("portainer-token", "", "Portainer API token")
-	portainerMCPPath = flag.String("mcp-path", "portainer-mcp", "Path to portainer-mcp binary")
-	listenAddr       = flag.String("listen", ":8080", "Listen address")
-	baseURL          = flag.String("base-url", "", "Base URL for SSE endpoint")
-	readOnly         = flag.Bool("read-only", false, "Enable read-only mode")
-	skipVersionCheck = flag.Bool("skip-version-check", false, "Skip Portainer version check")
-	debug            = flag.Bool("debug", false, "Enable debug logging")
-	password         = flag.String("password", "", "Password for HTTP Basic Auth (required)")
-	useHTTP          = flag.Bool("use-http", false, "Use HTTP instead of HTTPS for Portainer connection")
+	portainerURL     = flag.String("portainer-url", getEnv("PORTAINER_URL", ""), "Portainer server URL (hostname, IP:port, or full URL)")
+	portainerToken   = flag.String("portainer-token", getEnv("PORTAINER_TOKEN", ""), "Portainer API token")
+	portainerMCPPath = flag.String("mcp-path", getEnv("MCP_PATH", "portainer-mcp"), "Path to portainer-mcp binary")
+	listenAddr       = flag.String("listen", getEnv("MCP_LISTEN", ":8080"), "Listen address")
+	baseURL          = flag.String("base-url", getEnv("MCP_BASE_URL", ""), "Base URL for SSE endpoint and QR code")
+	readOnly         = flag.Bool("read-only", getEnvBool("MCP_READ_ONLY", false), "Enable read-only mode")
+	skipVersionCheck = flag.Bool("skip-version-check", getEnvBool("MCP_SKIP_VERSION_CHECK", false), "Skip Portainer version check")
+	debug            = flag.Bool("debug", getEnvBool("MCP_DEBUG", false), "Enable debug logging")
+	password         = flag.String("password", getEnv("MCP_PASSWORD", ""), "Password for HTTP Basic Auth (required)")
+	useHTTP          = flag.Bool("use-http", getEnvBool("MCP_USE_HTTP", false), "Use HTTP instead of HTTPS for Portainer connection")
 )
+
+// getEnv reads an environment variable and returns the value or a default
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+// getEnvBool reads an environment variable and returns true if it's "true", "1", or "yes"
+func getEnvBool(key string, defaultValue bool) bool {
+	if value := os.Getenv(key); value != "" {
+		return value == "true" || value == "1" || value == "yes"
+	}
+	return defaultValue
+}
 
 type MCPSession struct {
 	ID        string
@@ -62,6 +79,36 @@ func normalizePortainerURL(url string, useHTTP bool) string {
 
 	// Add scheme
 	return scheme + url
+}
+
+// generateQRCode prints an ASCII QR code containing server connection info
+func generateQRCode(serverUrl, password string) {
+	// Create JSON data for QR
+	data := map[string]string{
+		"serverUrl": serverUrl,
+		"password":  password,
+	}
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		log.Printf("Failed to create QR data: %v", err)
+		return
+	}
+
+	// Print header
+	fmt.Println("\n=== MCP Server QR Code ===")
+	fmt.Println("Scan this with Kontainer app to connect:")
+	fmt.Println()
+
+	// Generate QR with config
+	config := qrterminal.Config{
+		Level:      qrterminal.M,
+		Writer:     os.Stdout,
+		HalfBlocks: true,
+	}
+	qrterminal.GenerateWithConfig(string(jsonData), config)
+
+	// Print footer
+	fmt.Println("\n==========================")
 }
 
 func main() {
@@ -270,12 +317,39 @@ func main() {
 		})
 	}))
 
+	serverReady := make(chan struct{})
+	serverErr := make(chan error, 1)
+
 	go func() {
 		logger.Info().Str("address", *listenAddr).Msg("Starting Portainer MCP HTTP server")
+		close(serverReady) // Signal server starting
 		if err := http.ListenAndServe(*listenAddr, nil); err != nil && err != http.ErrServerClosed {
-			logger.Fatal().Err(err).Msg("Server error")
+			serverErr <- err
 		}
 	}()
+
+	<-serverReady // Wait for server
+
+	baseEndpoint := *baseURL
+	if baseEndpoint == "" {
+		baseEndpoint = fmt.Sprintf("http://%s", *listenAddr)
+		if strings.HasPrefix(*listenAddr, ":") {
+			// For ":8080" format, construct full URL
+			hostname, _ := os.Hostname()
+			if hostname == "" {
+				hostname = "localhost"
+			}
+			baseEndpoint = fmt.Sprintf("http://%s%s", hostname, *listenAddr)
+		}
+	}
+	generateQRCode(baseEndpoint, *password)
+
+	// Check for server startup errors
+	select {
+	case err := <-serverErr:
+		logger.Fatal().Err(err).Msg("Server failed to start")
+	default:
+	}
 
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)

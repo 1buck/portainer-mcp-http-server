@@ -57,6 +57,7 @@ docker run -d \
   -e PORTAINER_URL=https://portainer.example.com \
   -e PORTAINER_TOKEN=your-token \
   -e MCP_PASSWORD=your-password \
+  -e MCP_BASE_URL=192.168.1.50:8080 \
   ghcr.io/1buck/portainer-mcp-server:latest
 ```
 
@@ -73,6 +74,7 @@ services:
       - PORTAINER_URL=https://portainer.example.com
       - PORTAINER_TOKEN=your-token
       - MCP_PASSWORD=your-password
+      - MCP_BASE_URL=192.168.1.50:8080
 ```
 
 ### Option 4: Build from Source
@@ -85,16 +87,30 @@ go build -o portainer-mcp-server .
 
 ## Usage
 
+### Binary
+
 After downloading or building, run:
 
 ```bash
+# Basic usage
 ./portainer-mcp-server \
-  -portainer-url portainer.example.com \
-  -portainer-token YOUR_API_TOKEN \
-  -password YOUR_PASSWORD
+  -portainer-url http://localhost:9000 \
+  -portainer-token YOUR_TOKEN \
+  -password YOUR_PASSWORD \
+  -base-url 192.168.1.50:8080
 ```
+### Docker / Docker Compose
 
-Your server is now ready at `http://localhost:8080`.
+Environment variables map to flags:
+
+| Environment Variable | Flag | Example |
+|---------------------|------|---------|
+| `PORTAINER_URL` | `-portainer-url` | `http://portainer:9000` |
+| `PORTAINER_TOKEN` | `-portainer-token` | Your API token |
+| `MCP_PASSWORD` | `-password` | Your password |
+| `MCP_BASE_URL` | `-base-url` | `192.168.1.50:8080` |
+| `MCP_LISTEN` | `-listen` | `:8080` |
+| `MCP_READ_ONLY` | `-read-only` | `true` or `false` |
 
 ## Configuration
 
@@ -108,131 +124,40 @@ Your server is now ready at `http://localhost:8080`.
 
 ### Optional Flags
 
-| Flag | Description | Default |
-|------|-------------|---------|
-| `-listen` | Server listen address | `:8080` |
-| `-base-url` | Public URL for SSE endpoint | Auto-detected |
-| `-read-only` | Disable write operations | `false` |
-| `-use-http` | Use HTTP (dev only) | `false` |
-| `-debug` | Enable debug logs | `false` |
+| Flag | Description | Default | Env Variable |
+|------|-------------|---------|--------------|
+| `-listen` | Server listen address | `:8080` | `MCP_LISTEN` |
+| `-base-url` | **Public URL for QR code and SSE** (e.g., `192.168.1.100:8080`, hostname, or full URL) | Auto-detected from hostname | `MCP_BASE_URL` |
+| `-read-only` | Disable write operations | `false` | `MCP_READ_ONLY` |
+| `-use-http` | Use HTTP (dev only) | `false` | - |
+| `-debug` | Enable debug logs | `false` | - |
 
-### URL Formats
+## Connecting from Kontainer App
 
-All these work:
+1. Start server
+2. In Kontainer app
+   - Go to instance setting screen
+   - Scan QR code generated in console or manually input url and password
+3. Test and save connnection
 
-```bash
-# Hostname (HTTPS assumed)
--portainer-url portainer.example.com
+<img src="assets/screenshot.png" alt="scan qr in kontainer app" style="width:150px;"/>
 
-# IP with port
--portainer-url 192.168.1.100:9443
 
-# Full URL
--portainer-url https://portainer.example.com:9443
 
-# Local development
--portainer-url localhost:9000 -use-http
-```
 
-## Getting Your Portainer Token
+### Download Kontainer App
+* Android: https://play.google.com/store/apps/details?id=com.devculi.kontainer
+* IOS: https://apps.apple.com/us/app/portainer/id6742278087
 
-1. Open Portainer web UI
-2. Go to **Settings → API Tokens**
-3. Click **Add API token**
-4. Give it a name (e.g., "kontainer")
-5. Copy the generated token
+<p align="center">
+  <a href="https://play.google.com/store/apps/details?id=com.devculi.kontainer">
+    <img src="assets/google-play.svg" alt="Download from Google Play Store" style="width:150px;"/>
+  </a>
+  <a href="https://apps.apple.com/us/app/portainer/id6742278087">
+    <img src="assets/apple.svg" alt="Download from Apple App Store" style="width:150px;"/>
+  </a>
+</p>
 
-## Connecting Kontainer App
-
-1. Ensure server is running
-2. In Kontainer app, add new MCP server:
-   - **URL**: `https://your-server.com/sse` (or `http://localhost:8080/sse` for local)
-   - **Password**: The password you set with `-password` flag
-3. App will discover available tools automatically
-
-## Health Check
-
-```bash
-curl http://localhost:8080/health
-# Returns: OK
-```
-
-## Test Connection
-
-```bash
-curl -u :your-password http://localhost:8080/connect
-# Returns: {"success": true, "version": "2.19.4"}
-```
-
-Use this to verify your Portainer URL and token before saving in the app.
-
-## Security Best Practices
-
-1. **Run behind HTTPS** - Use reverse proxy (nginx, Traefik, Caddy) with SSL
-2. **Strong password** - Use a unique, strong password for `-password`
-3. **Restrict Portainer token** - Create token with minimal required permissions
-4. **Read-only mode** - Use `-read-only` if you only need monitoring
-5. **Firewall** - Restrict access to known IPs if possible
-
-### Example with Caddy (automatic HTTPS)
-
-```caddyfile
-mcp.example.com {
-    reverse_proxy localhost:8080
-}
-```
-
-### Example with nginx
-
-```nginx
-server {
-    listen 443 ssl;
-    server_name mcp.example.com;
-
-    ssl_certificate /path/to/cert.pem;
-    ssl_certificate_key /path/to/key.pem;
-
-    location / {
-        proxy_pass http://localhost:8080;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
-        proxy_set_header X-Real-IP $remote_addr;
-    }
-}
-```
-
-## Available Operations
-
-Once connected, Kontainer can:
-
-- **Containers**: list, get details, start, stop, restart, remove
-- **Images**: list, pull, remove
-- **Volumes**: list, create, remove
-- **Networks**: list, create, remove
-- **Stacks**: list, deploy, remove (Docker Swarm)
-- **Kubernetes**: namespaces, pods, deployments, services, logs
-
-## Troubleshooting
-
-### "Unauthorized" error
-
-- Check password matches exactly what you set
-- Ensure app is using correct URL
-
-### "Connection failed" error
-
-- Verify Portainer URL is reachable from server
-- Check API token is valid (test with `/connect` endpoint)
-- Ensure Portainer is running
-
-### "Streaming unsupported" error
-
-- Server doesn't support SSE. Use a proper HTTP server.
-
-## Requirements
-
-- Portainer CE or BE 2.0+
-- `portainer-mcp` binary (bundled in Docker image, or download separately)
 
 ## License
 
