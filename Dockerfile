@@ -15,10 +15,10 @@ ARG TARGETOS
 ARG TARGETARCH
 RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o portainer-mcp-server .
 
-# Final stage
-FROM alpine:latest
+# Final stage - use debian for glibc compatibility
+FROM debian:bookworm-slim
 
-RUN apk --no-cache add ca-certificates curl tar
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl tar && rm -rf /var/lib/apt/lists/*
 
 # Download portainer-mcp binary for the target platform
 ARG TARGETARCH
