@@ -1,5 +1,5 @@
-# Build stage
-FROM golang:1.24-alpine AS builder
+# Build stage - native compilation for each platform
+FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 WORKDIR /app
 
@@ -10,9 +10,10 @@ RUN go mod download
 
 COPY . .
 
-# Build for target architecture
+# Build for target architecture using cross-compilation
+ARG TARGETOS
 ARG TARGETARCH
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o portainer-mcp-server .
+RUN CGO_ENABLED=0 GOOS=${TARGETOS} GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o portainer-mcp-server .
 
 # Final stage
 FROM alpine:latest
