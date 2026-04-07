@@ -16,11 +16,10 @@ FROM alpine:latest
 
 RUN apk --no-cache add ca-certificates
 
+# Copy bundled portainer-mcp binary based on TARGETARCH
 ARG TARGETARCH
-RUN wget -q https://github.com/portainer/portainer-mcp/releases/download/v0.7.0/portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz \
-    && tar -xzf portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz \
-    && mv portainer-mcp /usr/local/bin/ \
-    && rm portainer-mcp-v0.7.0-linux-${TARGETARCH}.tar.gz
+COPY --from=builder /app/bundled/portainer-mcp-linux-${TARGETARCH} /usr/local/bin/portainer-mcp
+RUN chmod +x /usr/local/bin/portainer-mcp
 
 COPY --from=builder /app/portainer-mcp-server /usr/local/bin/
 
