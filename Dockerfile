@@ -9,7 +9,10 @@ COPY go.mod go.sum ./
 RUN go mod download
 
 COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o portainer-mcp-server .
+
+# Build for target architecture
+ARG TARGETARCH
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=${TARGETARCH} go build -ldflags="-s -w" -o portainer-mcp-server .
 
 # Final stage
 FROM alpine:latest
