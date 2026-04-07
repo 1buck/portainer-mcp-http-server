@@ -92,6 +92,14 @@ func findPortainerMCP(explicitPath string) string {
 		return explicitPath
 	}
 
+	// Check for system-installed binary first (Docker, package managers)
+	systemPath := "/usr/local/bin/portainer-mcp"
+	if _, err := os.Stat(systemPath); err == nil {
+		log.Printf("Using system portainer-mcp binary: %s", systemPath)
+		return systemPath
+	}
+
+	// Try bundled binary (for standalone distribution)
 	if bundledPath, err := getBundledBinaryPath(); err == nil {
 		log.Printf("Using bundled portainer-mcp binary: %s", bundledPath)
 		return bundledPath
