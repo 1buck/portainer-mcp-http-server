@@ -165,6 +165,13 @@ func normalizePortainerURL(url string, useHTTP bool) string {
 	return scheme + url
 }
 
+// stripScheme removes http:// or https:// prefix from URL
+func stripScheme(url string) string {
+	url = strings.TrimPrefix(url, "https://")
+	url = strings.TrimPrefix(url, "http://")
+	return url
+}
+
 // generateQRCode prints an ASCII QR code containing server connection info
 func generateQRCode(serverUrl, password string) {
 	// Create JSON data for QR
@@ -451,9 +458,12 @@ func main() {
 	logger.Info().Msg("Server stopped")
 }
 
-func NewMCPSession(mcpPath, url, token string, readOnly, skipVersionCheck bool) (*MCPSession, error) {
+func NewMCPSession(mcpPath, server, token string, readOnly, skipVersionCheck bool) (*MCPSession, error) {
+	// portainer-mcp expects server without scheme (ip:port, domain:port, or domain)
+	server = stripScheme(server)
+
 	args := []string{
-		"-server", url,
+		"-server", server,
 		"-token", token,
 	}
 	if readOnly {
@@ -494,12 +504,161 @@ func NewMCPSession(mcpPath, url, token string, readOnly, skipVersionCheck bool) 
 	go session.readLoop()
 	go session.stderrLoop()
 
+	// Wait for MCP initialization handshake
+	if err := session.waitForInitialize(); err != nil {
+		session.Close()
+		return nil, fmt.Errorf("MCP initialization failed: %w", err)
+	}
+
 	return session, nil
+}
+
+// waitForInitialize handles the MCP protocol initialization handshake
+func (s *MCPSession) waitForInitialize() error {
+	// According to MCP protocol, CLIENT sends initialize request first
+	// Then server responds with capabilities
+	// Then client sends initialized notification
+
+	reqID := uuid.New().String()
+
+	// Send initialize request
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      reqID,
+		"method":  "initialize",
+		"params": map[string]interface{}{
+			"protocolVersion": "2024-11-05",
+			"capabilities":    map[string]interface{}{},
+			"clientInfo": map[string]interface{}{
+				"name":    "portainer-mcp-http-server",
+				"version": "1.0.0",
+			},
+		},
+	}
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return fmt.Errorf("failed to marshal initialize request: %w", err)
+	}
+
+	if err := s.SendMessage(reqBytes); err != nil {
+		return fmt.Errorf("failed to send initialize request: %w", err)
+	}
+
+	// Wait for initialize response with timeout
+	timeout := time.AfterFunc(10*time.Second, func() {
+		s.Close()
+	})
+	defer timeout.Stop()
+
+	for {
+		select {
+		case msg := <-s.eventChan:
+			var resp struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      string          `json:"id"`
+				Result  json.RawMessage `json:"result"`
+				Error   *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+
+			if err := json.Unmarshal(msg, &resp); err != nil {
+				continue
+			}
+
+			// Check if this is our initialize response
+			if resp.ID == reqID {
+				if resp.Error != nil {
+					return fmt.Errorf("initialize error: %s", resp.Error.Message)
+				}
+
+				// Send initialized notification
+				notification := map[string]interface{}{
+					"jsonrpc": "2.0",
+					"method":  "notifications/initialized",
+				}
+
+				notifBytes, err := json.Marshal(notification)
+				if err != nil {
+					return fmt.Errorf("failed to marshal initialized notification: %w", err)
+				}
+
+				if err := s.SendMessage(notifBytes); err != nil {
+					return fmt.Errorf("failed to send initialized notification: %w", err)
+				}
+
+				return nil // Initialization complete
+			}
+
+		case <-s.done:
+			return fmt.Errorf("session closed while waiting for initialization")
+		}
+	}
 }
 
 func (s *MCPSession) SendMessage(msg json.RawMessage) error {
 	_, err := s.stdin.Write(append(msg, '\n'))
 	return err
+}
+
+// SendJSONRPC sends a JSON-RPC 2.0 request and waits for response
+func (s *MCPSession) SendJSONRPC(method string, params interface{}) (json.RawMessage, error) {
+	// Generate unique request ID
+	reqID := uuid.New().String()
+
+	req := map[string]interface{}{
+		"jsonrpc": "2.0",
+		"id":      reqID,
+		"method":  method,
+		"params":  params,
+	}
+
+	reqBytes, err := json.Marshal(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	// Send the request
+	if err := s.SendMessage(reqBytes); err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
+	// Wait for response with timeout
+	timeout := time.AfterFunc(10*time.Second, func() {
+		s.Close()
+	})
+	defer timeout.Stop()
+
+	for {
+		select {
+		case msg := <-s.eventChan:
+			var resp struct {
+				JSONRPC string          `json:"jsonrpc"`
+				ID      string          `json:"id"`
+				Result  json.RawMessage `json:"result"`
+				Error   *struct {
+					Code    int    `json:"code"`
+					Message string `json:"message"`
+				} `json:"error"`
+			}
+
+			if err := json.Unmarshal(msg, &resp); err != nil {
+				continue // Not a valid JSON-RPC response, keep waiting
+			}
+
+			// Check if this is our response
+			if resp.ID == reqID {
+				if resp.Error != nil {
+					return nil, fmt.Errorf("JSON-RPC error: %s", resp.Error.Message)
+				}
+				return resp.Result, nil
+			}
+		case <-s.done:
+			return nil, fmt.Errorf("session closed while waiting for response")
+		}
+	}
 }
 
 func (s *MCPSession) readLoop() {
