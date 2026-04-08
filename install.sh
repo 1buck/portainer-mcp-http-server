@@ -6,6 +6,11 @@
 # This script automatically detects your platform and installs the correct
 # portainer-mcp-server binary.
 #
+# Supported platforms:
+#   - Linux AMD64 (x86_64)
+#   - Linux ARM64 (aarch64)
+#   - macOS ARM64 (Apple Silicon M1/M2/M3)
+#
 # Usage: curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash
 # Or:    curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --version v0.7.0
 ###############################################################################
@@ -189,16 +194,28 @@ detect_platform() {
             platform_bin="portainer-mcp-server-darwin-arm64"
             ;;
         darwin-amd64)
-            platform_bin="portainer-mcp-server-darwin-amd64"
+            log_error "macOS Intel (darwin-amd64) is not supported"
+            log_error "Only Apple Silicon (M1/M2/M3) Macs are supported"
+            log_error "See: https://github.com/1buck/portainer-mcp-http-server/releases"
+            exit 1
             ;;
-        windows-amd64)
-            platform_bin="portainer-mcp-server-windows-amd64.exe"
+        windows-*)
+            log_error "Windows is not supported"
+            log_error "The portainer-mcp dependency doesn't provide Windows binaries"
+            log_error "See: https://github.com/portainer/portainer-mcp/releases"
+            exit 1
             ;;
-        windows-arm64)
-            platform_bin="portainer-mcp-server-windows-amd64.exe"
+        linux-arm|linux-armhf)
+            log_error "Linux ARM (32-bit) is not supported"
+            log_error "Only Linux ARM64 (aarch64) is supported"
+            exit 1
             ;;
         *)
             log_error "Unsupported platform: ${os}-${arch}"
+            log_error "Supported platforms:"
+            log_error "  - Linux AMD64 (x86_64)"
+            log_error "  - Linux ARM64 (aarch64)"
+            log_error "  - macOS ARM64 (Apple Silicon M1/M2/M3)"
             exit 1
             ;;
     esac
