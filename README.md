@@ -69,6 +69,8 @@ docker run -d \
   -e PORTAINER_TOKEN=your-token \
   -e MCP_PASSWORD=your-password \
   -e MCP_BASE_URL=192.168.1.50:8080 \
+  -e MCP_READ_ONLY=false \
+  -e MCP_DEBUG=false \
   ghcr.io/1buck/portainer-mcp-server:latest
 ```
 ---
@@ -87,6 +89,9 @@ services:
       - PORTAINER_TOKEN=your-token
       - MCP_PASSWORD=your-password
       - MCP_BASE_URL=192.168.1.50:8080
+      - MCP_READ_ONLY=false
+      - MCP_DEBUG=false
+      - MCP_SKIP_VERSION_CHECK=false
 ```
 ---
 
@@ -111,6 +116,19 @@ The binary is **self-contained** - it automatically extracts and uses the bundle
   -portainer-token YOUR_TOKEN \
   -password YOUR_PASSWORD \
   -base-url 192.168.1.50:8080
+
+# All options
+./portainer-mcp-server \
+  -portainer-url http://localhost:9000 \
+  -portainer-token YOUR_TOKEN \
+  -password YOUR_PASSWORD \
+  -listen :8080 \
+  -base-url 192.168.1.50:8080 \
+  -mcp-path /usr/local/bin/portainer-mcp \
+  -read-only false \
+  -skip-version-check false \
+  -debug false \
+  -use-http false
 ```
 
 **Binary Resolution:** The server will:
@@ -121,14 +139,18 @@ The binary is **self-contained** - it automatically extracts and uses the bundle
 
 Environment variables map to flags:
 
-| Environment Variable | Flag | Example |
-|---------------------|------|---------|
-| `PORTAINER_URL` | `-portainer-url` | `http://portainer:9000` |
-| `PORTAINER_TOKEN` | `-portainer-token` | Your API token |
-| `MCP_PASSWORD` | `-password` | Your password |
-| `MCP_BASE_URL` | `-base-url` | `192.168.1.50:8080` |
-| `MCP_LISTEN` | `-listen` | `:8080` |
-| `MCP_READ_ONLY` | `-read-only` | `true` or `false` |
+| Environment Variable | Flag | Example | Default |
+|---------------------|------|---------|---------|
+| `PORTAINER_URL` | `-portainer-url` | `http://portainer:9000` | (required) |
+| `PORTAINER_TOKEN` | `-portainer-token` | Your API token | (required) |
+| `MCP_PASSWORD` | `-password` | Your password | (required) |
+| `MCP_BASE_URL` | `-base-url` | `192.168.1.50:8080` | Auto-detected |
+| `MCP_LISTEN` | `-listen` | `:8080` | `:8080` |
+| `MCP_PATH` | `-mcp-path` | `/usr/local/bin/portainer-mcp` | `portainer-mcp` |
+| `MCP_READ_ONLY` | `-read-only` | `true` or `false` | `false` |
+| `MCP_SKIP_VERSION_CHECK` | `-skip-version-check` | `true` or `false` | `false` |
+| `MCP_DEBUG` | `-debug` | `true` or `false` | `false` |
+| `MCP_USE_HTTP` | `-use-http` | `true` or `false` | `false` |
 
 ## Configuration
 
@@ -146,9 +168,11 @@ Environment variables map to flags:
 |------|-------------|---------|--------------|
 | `-listen` | Server listen address | `:8080` | `MCP_LISTEN` |
 | `-base-url` | **Public URL for QR code and SSE** (e.g., `192.168.1.100:8080`, hostname, or full URL) | Auto-detected from hostname | `MCP_BASE_URL` |
+| `-mcp-path` | Path to portainer-mcp binary | `portainer-mcp` | `MCP_PATH` |
 | `-read-only` | Disable write operations | `false` | `MCP_READ_ONLY` |
-| `-use-http` | Use HTTP (dev only) | `false` | - |
-| `-debug` | Enable debug logs | `false` | - |
+| `-skip-version-check` | Skip Portainer version check | `false` | `MCP_SKIP_VERSION_CHECK` |
+| `-debug` | Enable debug logging | `false` | `MCP_DEBUG` |
+| `-use-http` | Use HTTP instead of HTTPS (dev only) | `false` | `MCP_USE_HTTP` |
 
 ## Connecting from Kontainer App
 
