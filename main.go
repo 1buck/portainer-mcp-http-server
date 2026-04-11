@@ -248,10 +248,15 @@ func main() {
 	var sessionsMu sync.RWMutex
 
 	http.HandleFunc("/sse", authMiddleware(func(w http.ResponseWriter, r *http.Request) {
+		// SSE headers - critical for nginx/proxy compatibility
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.Header().Set("Cache-Control", "no-cache")
 		w.Header().Set("Connection", "keep-alive")
 		w.Header().Set("Access-Control-Allow-Origin", "*")
+		// X-Accel-Buffering tells nginx to disable buffering for this response
+		// This allows SSE events to stream immediately without waiting for buffer fill
+		// Works without any nginx config changes
+		w.Header().Set("X-Accel-Buffering", "no")
 
 		flusher, ok := w.(http.Flusher)
 		if !ok {
@@ -289,6 +294,29 @@ func main() {
 
 		logger.Info().Str("session", sessionID).Msg("SSE connection established")
 
+		// Heartbeat goroutine - sends SSE comments every 30 seconds
+		// This keeps connection alive through nginx idle timeout
+		// SSE comments (: ... \n\n) are ignored by client but keep stream active
+		heartbeatDone := make(chan struct{})
+		go func() {
+			ticker := time.NewTicker(30 * time.Second)
+			defer ticker.Stop()
+			defer close(heartbeatDone)
+			for {
+				select {
+				case <-ticker.C:
+					// Send SSE comment (heartbeat) - ignored by client but keeps connection alive
+					fmt.Fprintf(w, ": heartbeat\n\n")
+					flusher.Flush()
+					logger.Debug().Str("session", sessionID).Msg("SSE heartbeat sent")
+				case <-r.Context().Done():
+					return
+				case <-session.done:
+					return
+				}
+			}
+		}()
+
 		for {
 			select {
 			case msg := <-session.eventChan:
@@ -297,6 +325,8 @@ func main() {
 			case <-session.done:
 				return
 			case <-r.Context().Done():
+				return
+			case <-heartbeatDone:
 				return
 			}
 		}

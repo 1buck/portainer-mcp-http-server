@@ -201,6 +201,93 @@ Environment variables map to flags:
 </p>
 
 
+## Nginx Proxy Configuration
+
+**✅ Update (v0.7.1+): The server now handles nginx compatibility automatically!**
+
+The server sends `X-Accel-Buffering: no` header and SSE heartbeats (30s interval), which tells nginx to:
+- Disable buffering for SSE streams automatically
+- Keep connections alive through nginx idle timeout
+
+**No nginx configuration changes required** for most nginx proxy setups. Just deploy the server behind nginx and it should work.
+
+### When You Still Need Manual Nginx Config
+
+If you still experience connection issues after deploying v0.7.1+, add this to Nginx Proxy Manager's **Advanced** tab:
+
+### Why It's Needed
+
+SSE connections require:
+- **No buffering** - Events must stream immediately, not be batched
+- **Long timeouts** - Connections stay open for extended periods
+- **HTTP/1.1** - Required for chunked transfer encoding
+
+### Nginx Proxy Setup
+
+In Nginx Proxy, add this to your proxy host:
+
+```nginx
+# SSE endpoint - CRITICAL for streaming
+location /sse {
+    proxy_pass http://YOUR_BACKEND_IP:PORT;
+    
+    # MUST HAVE - Disable buffering for SSE
+    proxy_buffering off;
+    proxy_cache off;
+    proxy_max_temp_file_size 0;
+    
+    # MUST HAVE - HTTP/1.1 for streaming
+    proxy_http_version 1.1;
+    proxy_set_header Connection '';
+    
+    # Standard headers
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    
+    # MUST HAVE - Prevent timeout (24 hours)
+    proxy_read_timeout 86400s;
+    proxy_send_timeout 86400s;
+    
+    # Clean chunk handling
+    chunked_transfer_encoding off;
+}
+
+# Message endpoint - normal timeout OK
+location /mcp/message {
+    proxy_pass http://YOUR_BACKEND_IP:PORT;
+    
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    
+    # Normal timeout for RPC calls
+    proxy_read_timeout 60s;
+    proxy_send_timeout 60s;
+}
+
+# Connect endpoint (for testing)
+location /connect {
+    proxy_pass http://YOUR_BACKEND_IP:PORT;
+    
+    proxy_http_version 1.1;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+### Common Issues
+
+| Issue | Cause | Fix |
+|-------|-------|-----|
+| Connection closes after 60s | Default `proxy_read_timeout` | Set to `86400s` |
+| Events don't stream | `proxy_buffering on` (default) | Set `proxy_buffering off` |
+| "Invalid session" errors | SSE closed, session invalidated | Fix timeout + buffering |
+| Double chunking errors | Nginx re-encoding chunks | Set `chunked_transfer_encoding off` |
+
 ## License
 
 MIT
