@@ -49,15 +49,6 @@ curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/mai
 # Show all options
 curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --help
 ```
-
-**Script Features:**
-- ✅ Auto-detects OS and architecture
-- ✅ Downloads correct binary for your platform
-- ✅ Installs to `/usr/local/bin` (or custom location)
-- ✅ Creates `portainer-mcp-server` symlink
-- ✅ Supports reinstallation with `--force`
-- ✅ Verifies download integrity
-
 ---
 
 ### Option 2: Docker (Recommend)
@@ -203,7 +194,7 @@ Environment variables map to flags:
 
 ## Nginx Proxy Configuration
 
-**✅ Update (v0.7.1+): The server now handles nginx compatibility automatically!**
+**✅ Update (v0.7.0): The server now handles nginx compatibility automatically!**
 
 The server sends `X-Accel-Buffering: no` header and SSE heartbeats (30s interval), which tells nginx to:
 - Disable buffering for SSE streams automatically
