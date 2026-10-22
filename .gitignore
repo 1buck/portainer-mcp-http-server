@@ -1,4 +1,5 @@
 dist/
-bundled/
+bundled/*
+!bundled/.gitkeep
 .DS_Store
 portainer-mcp-server

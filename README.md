@@ -40,11 +40,11 @@ Your Portainer API token and password never leave your infrastructure.
 ### Option 1: Auto-Install Script
 
 ```bash
-# Install latest version (v0.7.0)
+# Install latest version (2.45.1)
 curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash
 
 # Install specific version
-curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --version v0.7.0
+curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --version 2.45.1
 
 # Show all options
 curl -fsSL https://raw.githubusercontent.com/1buck/portainer-mcp-http-server/main/install.sh | bash -s -- --help

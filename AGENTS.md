@@ -59,36 +59,36 @@ git pull origin main
 
 Edit `Makefile` and update:
 ```makefile
-VERSION := v0.7.0
-PORTAINER_MCP_VERSION := v0.7.0
+VERSION := 2.45.1
+PORTAINER_MCP_VERSION := 2.45.1
 ```
 
 ### 3. Commit any changes
 
 ```bash
 git add .
-git commit -m "release: v0.7.0"
+git commit -m "release: 2.45.1"
 git push origin main
 ```
 
 ### 4. Tag the release
 
 ```bash
-git tag -d v0.7.0  # Delete old tag if exists
-git tag v0.7.0
-git push origin v0.7.0 --force
+git tag -d 2.45.1  # Delete old tag if exists
+git tag 2.45.1
+git push origin 2.45.1 --force
 ```
 
 ### 5. Create GitHub release with binaries
 
 ```bash
 # Create release
-gh release create v0.7.0 --title "v0.7.0" --notes "Initial release"
+gh release create 2.45.1 --title "2.45.1" --notes "Release 2.45.1 with multi-generation MCP support"
 
 # Upload binaries
-gh release upload v0.7.0 dist/portainer-mcp-server-linux-amd64 --clobber
-gh release upload v0.7.0 dist/portainer-mcp-server-linux-arm64 --clobber
-gh release upload v0.7.0 dist/portainer-mcp-server-darwin-arm64 --clobber
+gh release upload 2.45.1 dist/portainer-mcp-server-linux-amd64 --clobber
+gh release upload 2.45.1 dist/portainer-mcp-server-linux-arm64 --clobber
+gh release upload 2.45.1 dist/portainer-mcp-server-darwin-arm64 --clobber
 ```
 
 Or all at once:

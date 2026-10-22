@@ -488,22 +488,82 @@ func main() {
 	logger.Info().Msg("Server stopped")
 }
 
-func NewMCPSession(mcpPath, server, token string, readOnly, skipVersionCheck bool) (*MCPSession, error) {
-	// portainer-mcp expects server without scheme (ip:port, domain:port, or domain)
-	server = stripScheme(server)
+type MCPGeneration int
 
-	args := []string{
-		"-server", server,
-		"-token", token,
+const (
+	MCPGenUnknown MCPGeneration = iota
+	MCPGenV0      // v0.1.0 - v0.7.0 (Legacy CLI flags: -server, -token, etc.)
+	MCPGenV2      // 2.41.0+ (Modern FastMCP: PORTAINER_URL, PORTAINER_API_KEY, etc.)
+)
+
+var genCache sync.Map
+
+// DetectMCPGeneration probes the portainer-mcp binary output to determine whether
+// it uses legacy v0.x flags (-server, -token) or modern 2.x env variables.
+func DetectMCPGeneration(mcpPath string) MCPGeneration {
+	cmd := exec.Command(mcpPath, "-h")
+	out, _ := cmd.CombinedOutput()
+	outputStr := string(out)
+
+	if strings.Contains(outputStr, "-server") {
+		return MCPGenV0
 	}
+	return MCPGenV2
+}
+
+func getOrDetectMCPGeneration(mcpPath string) MCPGeneration {
+	if val, ok := genCache.Load(mcpPath); ok {
+		return val.(MCPGeneration)
+	}
+	gen := DetectMCPGeneration(mcpPath)
+	genCache.Store(mcpPath, gen)
+	if gen == MCPGenV0 {
+		log.Printf("Detected Portainer MCP binary [%s]: Gen 1 (v0.x legacy CLI flags)", mcpPath)
+	} else {
+		log.Printf("Detected Portainer MCP binary [%s]: Gen 2 (2.x FastMCP environment variables)", mcpPath)
+	}
+	return gen
+}
+
+func buildMCPCmd(mcpPath, server, token string, readOnly, skipVersionCheck, useHTTP bool) *exec.Cmd {
+	gen := getOrDetectMCPGeneration(mcpPath)
+
+	if gen == MCPGenV0 {
+		cleanServer := stripScheme(server)
+		args := []string{
+			"-server", cleanServer,
+			"-token", token,
+		}
+		if readOnly {
+			args = append(args, "-read-only")
+		}
+		if skipVersionCheck {
+			args = append(args, "-disable-version-check")
+		}
+		cmd := exec.Command(mcpPath, args...)
+		cmd.Env = os.Environ()
+		return cmd
+	}
+
+	fullURL := normalizePortainerURL(server, useHTTP)
+	cmd := exec.Command(mcpPath)
+	env := append(os.Environ(),
+		"PORTAINER_URL="+fullURL,
+		"PORTAINER_API_KEY="+token,
+		"PORTAINER_MCP_TRANSPORT=stdio",
+	)
 	if readOnly {
-		args = append(args, "-read-only")
+		env = append(env, "PORTAINER_READ_ONLY=1")
 	}
 	if skipVersionCheck {
-		args = append(args, "-disable-version-check")
+		env = append(env, "PORTAINER_TLS_VERIFY=0")
 	}
+	cmd.Env = env
+	return cmd
+}
 
-	cmd := exec.Command(mcpPath, args...)
+func NewMCPSession(mcpPath, server, token string, readOnly, skipVersionCheck bool) (*MCPSession, error) {
+	cmd := buildMCPCmd(mcpPath, server, token, readOnly, skipVersionCheck, *useHTTP)
 	stdin, err := cmd.StdinPipe()
 	if err != nil {
 		return nil, fmt.Errorf("failed to create stdin pipe: %w", err)

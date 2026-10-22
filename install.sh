@@ -27,7 +27,7 @@ NC='\033[0m' # No Color
 # Configuration
 REPO="1buck/portainer-mcp-http-server"
 INSTALL_DIR="/usr/local/bin"
-DEFAULT_VERSION="v0.7.0"
+DEFAULT_VERSION="2.45.1"
 
 # Parse command line arguments
 VERSION=""
